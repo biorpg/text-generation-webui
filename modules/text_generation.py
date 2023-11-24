@@ -87,7 +87,8 @@ def _generate_reply(question, state, stopping_strings=None, is_chat=False, escap
 
             # Maximum number of tokens/second
             if state['max_tokens_second'] > 0:
-                diff = 1 / state['max_tokens_second'] - (cur_time - last_update)
+                diff = 1 / state['max_tokens_second'] - \
+                    (cur_time - last_update)
                 if diff > 0:
                     time.sleep(diff)
 
@@ -118,7 +119,8 @@ def encode(prompt, add_special_tokens=True, add_bos_token=True, truncation_lengt
         if shared.model.__class__.__name__ not in ['Exllamav2Model']:
             input_ids = np.array(input_ids).reshape(1, len(input_ids))
     else:
-        input_ids = shared.tokenizer.encode(str(prompt), return_tensors='pt', add_special_tokens=add_special_tokens)
+        input_ids = shared.tokenizer.encode(
+            str(prompt), return_tensors='pt', add_special_tokens=add_special_tokens)
 
         # This is a hack for making replies more creative.
         if not add_bos_token and input_ids[0][0] == shared.tokenizer.bos_token_id:
@@ -277,11 +279,15 @@ def apply_stopping_strings(reply, all_stop_strings):
 
 def generate_reply_HF(question, original_question, seed, state, stopping_strings=None, is_chat=False):
     generate_params = {}
+    degenerate_params = {}
     for k in ['max_new_tokens', 'do_sample', 'temperature', 'temperature_last', 'top_p', 'min_p', 'typical_p', 'repetition_penalty', 'presence_penalty', 'frequency_penalty', 'repetition_penalty_range', 'encoder_repetition_penalty', 'top_k', 'min_length', 'no_repeat_ngram_size', 'num_beams', 'penalty_alpha', 'length_penalty', 'early_stopping', 'tfs', 'top_a', 'mirostat_mode', 'mirostat_tau', 'mirostat_eta', 'guidance_scale']:
-        generate_params[k] = state[k]
+        try:
+            degenerate_params[k] = state[k]
+        except:
 
     if state['negative_prompt'] != '':
-        generate_params['negative_prompt_ids'] = encode(state['negative_prompt'])
+        generate_params['negative_prompt_ids'] = encode(
+            state['negative_prompt'])
 
     for k in ['epsilon_cutoff', 'eta_cutoff']:
         if state[k] > 0:
@@ -303,24 +309,29 @@ def generate_reply_HF(question, original_question, seed, state, stopping_strings
         generate_params.update({'synced_gpus': True})
 
     # Encode the input
-    input_ids = encode(question, add_bos_token=state['add_bos_token'], truncation_length=get_max_prompt_length(state))
+    input_ids = encode(
+        question, add_bos_token=state['add_bos_token'], truncation_length=get_max_prompt_length(state))
     output = input_ids[0]
     cuda = not any((shared.args.cpu, shared.args.deepspeed))
     if state['auto_max_new_tokens']:
-        generate_params['max_new_tokens'] = state['truncation_length'] - input_ids.shape[-1]
+        generate_params['max_new_tokens'] = state['truncation_length'] - \
+            input_ids.shape[-1]
 
     # Add the encoded tokens to generate_params
-    question, input_ids, inputs_embeds = apply_extensions('tokenizer', state, question, input_ids, None)
+    question, input_ids, inputs_embeds = apply_extensions(
+        'tokenizer', state, question, input_ids, None)
     original_input_ids = input_ids
     generate_params.update({'inputs': input_ids})
     if inputs_embeds is not None:
         generate_params.update({'inputs_embeds': inputs_embeds})
 
     # Stopping criteria / eos token
-    eos_token_ids = [shared.tokenizer.eos_token_id] if shared.tokenizer.eos_token_id is not None else []
+    eos_token_ids = [
+        shared.tokenizer.eos_token_id] if shared.tokenizer.eos_token_id is not None else []
     generate_params['eos_token_id'] = eos_token_ids
     generate_params['stopping_criteria'] = transformers.StoppingCriteriaList()
-    generate_params['stopping_criteria'].append(_StopEverythingStoppingCriteria())
+    generate_params['stopping_criteria'].append(
+        _StopEverythingStoppingCriteria())
 
     processor = state.get('logits_processor', LogitsProcessorList([]))
     # In case a processor is passed by itself.
@@ -349,7 +360,8 @@ def generate_reply_HF(question, original_question, seed, state, stopping_strings
         else:
 
             def generate_with_callback(callback=None, *args, **kwargs):
-                kwargs['stopping_criteria'].append(Stream(callback_func=callback))
+                kwargs['stopping_criteria'].append(
+                    Stream(callback_func=callback))
                 clear_torch_cache()
                 with torch.no_grad():
                     shared.model.generate(**kwargs)
@@ -369,8 +381,10 @@ def generate_reply_HF(question, original_question, seed, state, stopping_strings
     finally:
         t1 = time.time()
         original_tokens = len(original_input_ids[0])
-        new_tokens = len(output) - (original_tokens if not shared.is_seq2seq else 0)
-        print(f'Output generated in {(t1-t0):.2f} seconds ({new_tokens/(t1-t0):.2f} tokens/s, {new_tokens} tokens, context {original_tokens}, seed {seed})')
+        new_tokens = len(output) - \
+            (original_tokens if not shared.is_seq2seq else 0)
+        print(
+            f'Output generated in {(t1-t0):.2f} seconds ({new_tokens/(t1-t0):.2f} tokens/s, {new_tokens} tokens, context {original_tokens}, seed {seed})')
         return
 
 
@@ -398,6 +412,8 @@ def generate_reply_custom(question, original_question, seed, state, stopping_str
     finally:
         t1 = time.time()
         original_tokens = len(encode(original_question)[0])
-        new_tokens = len(encode(original_question + reply)[0]) - original_tokens
-        print(f'Output generated in {(t1-t0):.2f} seconds ({new_tokens/(t1-t0):.2f} tokens/s, {new_tokens} tokens, context {original_tokens}, seed {seed})')
+        new_tokens = len(encode(original_question + reply)
+                         [0]) - original_tokens
+        print(
+            f'Output generated in {(t1-t0):.2f} seconds ({new_tokens/(t1-t0):.2f} tokens/s, {new_tokens} tokens, context {original_tokens}, seed {seed})')
         return
